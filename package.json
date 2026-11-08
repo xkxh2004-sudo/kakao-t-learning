@@ -1,0 +1,1 @@
+{"name":"kakao-t-learning","version":"1.0.0","private":true,"description":"DD3 기반 고령 학습자용 카카오T 온라인 모듈","scripts":{"start":"node serve.mjs","check":"node --check dist/app.js && node --check dist/content.js"}}
