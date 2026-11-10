@@ -2,17 +2,134 @@
 'use strict';
 const C=window.COURSE, $=s=>document.querySelector(s), KEY='kakao-t-learning-v1';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let state={done:[],phone:{},ready:[],last:'welcome',big:false,result:null}, storageOK=true;
-try{const x=JSON.parse(localStorage.getItem(KEY)||'null');if(x&&typeof x==='object'){state.done=Array.isArray(x.done)?x.done.filter(id=>C.pages.some(p=>p.id===id)):[];state.phone=x.phone&&typeof x.phone==='object'?x.phone:{};state.ready=Array.isArray(x.ready)?x.ready:[];state.last=C.pages.some(p=>p.id===x.last)?x.last:'welcome';state.big=x.big===true;state.result=x.result&&Array.isArray(x.result.answers)&&x.result.answers.length===8&&x.result.answers.every((a,i)=>Number.isInteger(a)&&a>=0&&a<C.quiz[i].choices.length)?x.result:null;}}catch(e){storageOK=false;}
+let state={done:[],phone:{},ready:[],selfChecks:[],last:'welcome',big:false,result:null}, storageOK=true;
+try{const x=JSON.parse(localStorage.getItem(KEY)||'null');if(x&&typeof x==='object'){state.done=Array.isArray(x.done)?x.done.filter(id=>C.pages.some(p=>p.id===id)):[];state.phone=x.phone&&typeof x.phone==='object'?x.phone:{};state.ready=Array.isArray(x.ready)?x.ready:[];state.selfChecks=Array.isArray(x.selfChecks)?x.selfChecks:[];state.last=C.pages.some(p=>p.id===x.last)?x.last:'welcome';state.big=x.big===true;state.result=x.result&&Array.isArray(x.result.answers)&&x.result.answers.length===8&&x.result.answers.every((a,i)=>Number.isInteger(a)&&a>=0&&a<C.quiz[i].choices.length)?x.result:null;}}catch(e){storageOK=false;}
 let quizAnswers=Array(8).fill(null),quizIndex=0, mapX=110,mapY=-70,drag=null;
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){storageOK=false;} updateProgress();}
 function updateProgress(){const percent=Math.round(state.done.length/C.pages.length*100);$('#progress').value=percent;$('#progressText').textContent=`설명 ${state.done.length} / ${C.pages.length}개 확인 · ${percent}%`;document.body.classList.toggle('big',state.big);$('#font').setAttribute('aria-pressed',String(state.big));$('#font').textContent=state.big?'가 기본 글씨':'가 글씨 크게';}
 function menu(active){$('#menu').innerHTML=`<a href="#home" class="${active==='home'?'active':''}"><span class="nav-num">⌂</span>학습 첫 화면</a>`+C.groups.map((g,i)=>{let ps=C.pages.filter(p=>p.group===g.id),done=ps.every(p=>state.done.includes(p.id));return `<a href="#${ps[0].id}" class="${active===g.id?'active ':''}${done?'done':''}"><span class="nav-num">${done?'✓':i+1}</span><span>${g.title}<br><small>약 ${g.time}분</small></span></a>`;}).join('')+`<a href="#quiz" class="${active==='quiz'?'active':''}"><span class="nav-num">7</span>스스로 확인하기 · 10분</a><a href="#results" class="${active==='results'?'active':''}"><span class="nav-num">✓</span>나의 학습 결과</a><a href="#guide" class="${active==='guide'?'active':''}"><span class="nav-num">↓</span>따라하기 안내서</a>`;updateProgress();}
-function figure(p){return p.image?`<figure class="screen"><img src="assets/${p.image}.webp" alt="${esc(p.alt)}"><button data-enlarge="${p.image}" data-alt="${esc(p.alt)}">＋ 화면 크게 보기</button><figcaption>학습 교재에서 가져온 화면 예시입니다.<br>내 스마트폰 화면과 다를 수 있습니다.</figcaption></figure>`:'';}
+function renderCapture(page) {
+  const marks = C.captureMarks[page.id];
+  const boxes = marks.map(([left, top, width, height], index) => `
+    <span class="capture-mark" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%" aria-hidden="true">
+      <span>${index + 1}</span>
+    </span>`).join('');
+  const directions = marks.map(([, , , , label]) => `<li>${esc(label)}</li>`).join('');
+  return `<div class="capture-body">
+    <div class="annotated-capture"><img src="assets/${page.image}.webp" alt="${esc(page.alt)}">${boxes}</div>
+    <ol class="capture-steps" aria-label="화면에 표시한 위치">${directions}</ol>
+  </div>`;
+}
+
+function figure(page) {
+  if (!page.image) return '';
+  return `<figure class="screen">
+    ${renderCapture(page)}
+    <button data-enlarge="${page.id}">＋ 화면 크게 보기</button>
+    <figcaption>번호와 테두리로 누르거나 확인할 곳을 표시했어요.<br>내 스마트폰 화면과 다를 수 있습니다.</figcaption>
+  </figure>`;
+}
+
+function renderSelfCheck(page, isLastInGroup) {
+  const items = C.selfChecks[page.group];
+  if (!items) return '';
+
+  const checks = Object.entries(items).map(([id, label]) => {
+    const key = `${page.group}:${id}`;
+    const checked = state.selfChecks.includes(key) ? 'checked' : '';
+    return `<label class="checkline"><input type="checkbox" data-self-check="${key}" ${checked}><span>${esc(label)}</span></label>`;
+  }).join('');
+
+  return `<details id="lessonSelfCheck" class="lesson-self-check" ${isLastInGroup ? 'open' : ''}>
+    <summary>이 구간에서 배운 것 스스로 확인하기</summary>
+    <p>혼자 할 수 있거나 설명할 수 있는 항목에 체크하세요. 아직 어려운 항목은 설명을 다시 보세요.</p>
+    <div class="checklist">${checks}</div>
+    <p class="self-check-count" role="status"></p>
+  </details>`;
+}
+
+function bindSelfCheck() {
+  const panel = $('#lessonSelfCheck');
+  if (!panel) return;
+
+  const checks = [...panel.querySelectorAll('input[data-self-check]')];
+  const count = panel.querySelector('.self-check-count');
+  function updateCount() {
+    const checked = checks.filter(input => input.checked).length;
+    count.textContent = `${checked} / ${checks.length}개 확인했습니다.`;
+  }
+
+  updateCount();
+  for (const input of checks) {
+    input.addEventListener('change', () => {
+      const key = input.dataset.selfCheck;
+      state.selfChecks = state.selfChecks.filter(saved => saved !== key);
+      if (input.checked) state.selfChecks.push(key);
+      save();
+      updateCount();
+    });
+  }
+}
 function feedback(msg,ok=true){const el=$('#feedback');if(el){el.className=`feedback ${ok?'ok':'retry'}`;el.textContent=msg;}}
 function options(items,action='choice'){return `<div class="options">${items.map((t,i)=>`<button class="option" data-${action}="${i}">${esc(t)}</button>`).join('')}</div>`;}
 function home(){menu('home');$('#main').innerHTML=`<section class="hero"><div class="hero-grid"><div><span class="eyebrow">어르신을 위한 생활 속 스마트폰 배움</span><h1>복지관 가는 길,<br>이제 내가 불러요.</h1><p class="lead">카카오T로 택시 부르기<br>한 화면씩, 차근차근 함께 배워요.</p><div class="meta"><span class="pill">한국어 · 약 60분</span><span class="pill">컴퓨터 + 내 스마트폰</span><span class="pill">로그인 없이 무료 학습</span></div><div class="actions"><a class="button primary" href="#${state.done.length?state.last:'welcome'}">${state.done.length?'이어서 배우기':'배움 시작하기'} →</a><a class="button" href="#guide">안내서 먼저 보기</a></div></div><div class="hero-visual" aria-hidden="true"><div class="phone-art"><img src="assets/icon-t.png" alt=""><div class="road"></div><strong style="font-size:16px">복지관으로 출발!</strong></div><span class="taxi-art">택시</span></div></div></section><div class="cards"><article class="card"><span class="number">01 · 컴퓨터로 보기</span><h3>크게 보고, 천천히 읽어요</h3><p>짧은 설명과 실제 화면으로 한 단계씩 알아봅니다.</p></article><article class="card"><span class="number">02 · 스마트폰으로 해보기</span><h3>내 손으로 익혀요</h3><p>호출 준비까지 직접 따라 하고, 어려우면 다시 봅니다.</p></article><article class="card"><span class="number">03 · 스스로 확인하기</span><h3>내가 배운 것을 알아봐요</h3><p>문제를 풀고, 다시 배울 단계를 확인합니다.</p></article></div><section class="panel"><h2>오늘 배우는 8단계</h2><div class="mini-steps">${['카카오T 찾기','카카오T 열기','복지관 검색하기','출발지 맞추기','일반호출 고르기','등록 카드 적용하기','호출하기 알아보기','비밀번호 화면 알아보기'].map((x,i)=>`<div><strong>${i+1}.</strong> ${x}</div>`).join('')}</div></section><div class="notice warning"><strong>마지막 두 단계는 화면으로만 연습해요.</strong><br>학습 중에는 스마트폰에서 실제 호출이나 결제 비밀번호 입력을 하지 않습니다.</div>${!storageOK?'<div class="notice warning">이 브라우저에서는 기록 저장이 어려울 수 있습니다. 결과를 내려받아 보관해 주세요.</div>':''}<p class="muted">진도와 최근 결과는 이 브라우저에만 저장됩니다. 다른 기기로 옮겨지지 않으며 교사에게 전송되지 않습니다.</p>`;}
-function lesson(p){menu(p.group);state.last=p.id;save();let i=C.pages.indexOf(p),g=C.groups.find(g=>g.id===p.group);$('#main').innerHTML=`<div class="lesson-head"><span>${esc(g.title)} · 약 ${g.time}분</span><span>설명 ${i+1} / ${C.pages.length}${p.step?` · 전체 8단계 중 ${p.step}단계`:''}</span></div><h1>${esc(p.title)}</h1><p class="lead">${esc(p.intro)}</p><div class="${p.image?'lesson-layout':''}"><section><ol class="instructions">${p.lines.map(t=>`<li>${esc(t)}</li>`).join('')}</ol></section>${figure(p)}</div><section class="practice" aria-labelledby="practiceTitle"><div class="label">${p.group==='call'?'화면으로 알아보기':'컴퓨터에서 해보는 연습'}</div><div id="activity"></div><div id="feedback" class="feedback" role="status" aria-live="polite"></div></section>${p.phone?`<section class="completion"><h2>이제 내 스마트폰으로 해보세요</h2><label><input type="checkbox" id="phoneCheck" ${state.phone[p.id]?'checked':''}><span>${esc(p.phone)}</span></label><p class="muted">이 체크는 본인의 연습 기록입니다. 컴퓨터 문제의 정답과 별도로 저장됩니다.</p></section>`:''}<div class="completion"><label><input type="checkbox" id="doneCheck" ${state.done.includes(p.id)?'checked':''}><span>이 설명과 연습을 확인했습니다.</span></label></div><div class="lesson-nav"><a class="button" href="#${i?C.pages[i-1].id:'home'}">← 이전</a><a class="button primary" href="#${i<C.pages.length-1?C.pages[i+1].id:'quiz'}">${i<C.pages.length-1?'다음으로':'스스로 확인하기'} →</a></div>`;renderActivity(p);$('#doneCheck').onchange=e=>{state.done=state.done.filter(id=>id!==p.id);if(e.target.checked)state.done.push(p.id);save();menu(p.group);};if($('#phoneCheck'))$('#phoneCheck').onchange=e=>{state.phone[p.id]=e.target.checked;save();};}
+function lesson(page) {
+  menu(page.group);
+  state.last = page.id;
+  save();
+
+  const index = C.pages.indexOf(page);
+  const group = C.groups.find(group => group.id === page.group);
+  const previous = C.pages[index - 1];
+  const next = C.pages[index + 1];
+  const isLastInGroup = next?.group !== page.group;
+  const phonePractice = page.phone ? `
+    <section class="completion">
+      <h2>이제 내 스마트폰으로 해보세요</h2>
+      <label><input type="checkbox" id="phoneCheck" ${state.phone[page.id] ? 'checked' : ''}><span>${esc(page.phone)}</span></label>
+      <p class="muted">이 체크는 본인의 연습 기록입니다. 컴퓨터 문제의 정답과 별도로 저장됩니다.</p>
+    </section>` : '';
+
+  $('#main').innerHTML = `
+    <div class="lesson-head">
+      <span>${esc(group.title)} · 약 ${group.time}분</span>
+      <span>설명 ${index + 1} / ${C.pages.length}${page.step ? ` · 전체 8단계 중 ${page.step}단계` : ''}</span>
+    </div>
+    <h1>${esc(page.title)}</h1>
+    <p class="lead">${esc(page.intro)}</p>
+    <div class="${page.image ? 'lesson-layout' : ''}">
+      <section><ol class="instructions">${page.lines.map(line => `<li>${esc(line)}</li>`).join('')}</ol></section>
+      ${figure(page)}
+    </div>
+    <section class="practice" aria-labelledby="practiceTitle">
+      <div class="label">${page.group === 'call' ? '화면으로 알아보기' : '컴퓨터에서 해보는 연습'}</div>
+      <div id="activity"></div>
+      <div id="feedback" class="feedback" role="status" aria-live="polite"></div>
+    </section>
+    ${phonePractice}
+    ${renderSelfCheck(page, isLastInGroup)}
+    <div class="completion">
+      <label><input type="checkbox" id="doneCheck" ${state.done.includes(page.id) ? 'checked' : ''}><span>이 설명과 연습을 확인했습니다.</span></label>
+    </div>
+    <div class="lesson-nav">
+      <a class="button" href="#${previous?.id ?? 'home'}">← 이전</a>
+      <a class="button primary" href="#${next?.id ?? 'quiz'}">${next ? '다음으로' : '스스로 확인하기'} →</a>
+    </div>`;
+
+  renderActivity(page);
+  bindSelfCheck();
+  $('#doneCheck').onchange = event => {
+    state.done = state.done.filter(id => id !== page.id);
+    if (event.target.checked) state.done.push(page.id);
+    save();
+    menu(page.group);
+  };
+  const phoneCheck = $('#phoneCheck');
+  if (phoneCheck) phoneCheck.onchange = event => {
+    state.phone[page.id] = event.target.checked;
+    save();
+  };
+}
 function renderActivity(p){const a=$('#activity');const question=(prompt,choices,correct,why)=>{a.innerHTML=`<h2 id="practiceTitle">${prompt}</h2>${options(choices)}`;a.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>{a.querySelectorAll('button').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');let ok=+b.dataset.choice===correct;feedback(ok?'맞습니다. '+why:'다시 생각해 볼까요? '+why,ok);});};
 switch(p.kind){
 case 'orientation': a.innerHTML='<h2 id="practiceTitle">먼저 화면 이동을 연습해요</h2><p>아래 버튼을 눌러 연습 화면을 열고, 다시 돌아와 보세요.</p><button id="navDemo" class="primary">연습 화면 열기 →</button>';$('#navDemo').onclick=()=>{a.innerHTML='<h2 id="practiceTitle">연습 화면에 잘 오셨어요</h2><p>이전 버튼으로 돌아올 수 있습니다. 왼쪽 목차에서도 배운 내용을 다시 열 수 있어요.</p><button id="navBack">← 이전 연습 화면으로</button>';$('#navBack').onclick=()=>{renderActivity(p);feedback('화면 이동 연습을 마쳤습니다. 아래 확인 체크를 하고 다음으로 가세요.');};};break;
@@ -38,9 +155,24 @@ function resultSummary(){if(!state.result)return null;const answers=state.result
 function results(){menu('results');const r=resultSummary();$('#main').innerHTML=`<span class="eyebrow">나의 학습 돌아보기</span><h1>나의 학습 결과</h1>${r?`<section class="panel"><p>화면으로 알아본 순서</p><div class="stat">${r.score} / 8단계</div><p>${r.score===8?'8단계의 화면 문제를 모두 맞혔습니다.':'아래에서 다시 배울 단계를 확인해 주세요.'}</p><p class="muted">최근 제출: ${esc(new Date(state.result.date).toLocaleString('ko-KR'))}<br>이 결과는 화면 문제의 이해도를 나타냅니다. 실제 스마트폰 수행이나 실제 호출 성공을 증명하지 않습니다.</p></section><ul class="result-list">${C.quiz.map((q,i)=>`<li><strong>${r.correct[i]?'✓ 확인됨':'↻ 다시 배우기'} · ${esc(q.title)}</strong><p>내 답: ${esc(q.choices[state.result.answers[i]])}<br>정답: ${esc(q.choices[q.answer])}</p><p>${esc(q.why)}</p><a href="#${q.page}">이 단계 다시 배우기 →</a></li>`).join('')}</ul><div class="actions"><button id="retryQuiz" class="primary">새로 평가해 보기</button><button id="downloadResults">결과 내려받기</button><button id="printResults">결과 인쇄하기</button></div>`:'<section class="panel"><p>아직 제출한 자기평가가 없습니다.</p><a class="button primary" href="#quiz">스스로 확인하기 →</a></section>'}<section class="panel" style="margin-top:28px"><h2>내 스마트폰으로 직접 해본 준비 과정</h2><p class="muted">아래 항목은 본인이 체크한 기록입니다. 다른 사람이 관찰한 수행 평가와는 다릅니다.</p><div class="checklist">${C.pages.filter(p=>p.phone).map(p=>`<label class="checkline"><input type="checkbox" data-result-phone="${p.id}" ${state.phone[p.id]?'checked':''}><span>${esc(p.phone)}</span></label>`).join('')}</div><div class="notice warning">호출하기와 결제 비밀번호는 화면으로만 배웠습니다. 실제 이동이 필요한 날 본인의 카카오T에서 수행하고, 내 힘으로 할 수 있었는지 별도로 확인해 보세요.</div></section><section class="download-box"><h2>다음 외출에도 함께 가져가세요</h2><p>따라하기 안내서를 스마트폰에 저장하거나 인쇄해 필요할 때 볼 수 있습니다.</p><a class="button" href="assets/quick-guide.pdf" download>따라하기 안내서 내려받기 ↓</a></section>`;document.querySelectorAll('[data-result-phone]').forEach(b=>b.onchange=()=>{state.phone[b.dataset.resultPhone]=b.checked;save();});if(r){$('#retryQuiz').onclick=()=>{quizAnswers=Array(8).fill(null);quizIndex=0;location.hash='quiz';};$('#downloadResults').onclick=downloadResults;$('#printResults').onclick=()=>window.print();}}
 function downloadResults(){const r=resultSummary();if(!r)return;const text=['내 손안의 택시 · 나의 학습 결과',new Date(state.result.date).toLocaleString('ko-KR'),`화면 자기평가: ${r.score} / 8단계`,'이 결과는 화면 문제의 이해도이며 실제 스마트폰 수행을 증명하지 않습니다.','',...C.quiz.map((q,i)=>`${q.title}: ${r.correct[i]?'확인됨':'다시 배우기'}\n내 답: ${q.choices[state.result.answers[i]]}\n정답: ${q.choices[q.answer]}\n${q.why}`),'','내 스마트폰 연습 (본인 체크)',...C.pages.filter(p=>p.phone).map(p=>`${state.phone[p.id]?'[완료]':'[아직]'} ${p.phone}`),'','호출하기·비밀번호는 화면으로만 학습함. 실제 호출 성공 여부는 별도 확인.'].join('\r\n');const url=URL.createObjectURL(new Blob(['\ufeff'+text],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='카카오T_나의학습결과.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function guide(){menu('guide');$('#main').innerHTML='<span class="eyebrow">필요할 때 다시 보는 8단계</span><h1>따라하기 안내서</h1><p class="lead">스마트폰에 저장하거나 종이에 인쇄해서 보세요.</p><div class="actions"><a class="button primary" href="assets/quick-guide.pdf" download>PDF 안내서 내려받기 ↓</a><a class="button" href="assets/quick-guide.pdf" target="_blank" rel="noopener">PDF 크게 열기 ↗</a><a class="button" href="guide.html" target="_blank" rel="noopener">글자로 된 안내서 ↗</a></div><div class="notice">파일이 바로 열리면, 열린 화면의 다운로드 또는 저장 버튼으로 보관할 수 있습니다.</div><div class="mini-steps">'+['카카오T 이름과 아이콘을 찾습니다. 없으면 설치된 앱 목록에서 검색합니다.','카카오T 아이콘을 한 번 눌러 엽니다.','동대문노인종합복지관을 검색합니다. 제기로33길 25 주소를 확인합니다.','내가 택시를 탈 곳에 핀이 있는지 확인하고 출발지로 설정합니다. 다르면 지도를 움직입니다.','택시 일반호출을 고릅니다.','결제수단에서 등록 카드를 고르고 적용합니다. 돌아온 화면의 카드를 확인합니다.','실제 이동할 때만 네 가지 정보를 확인하고 호출하기를 누릅니다.','비밀번호 화면이 나오면 본인의 스마트폰 카카오T에서 직접 입력합니다.'].map((s,i)=>`<div><h3>${i+1}단계</h3><p>${s}</p></div>`).join('')+'</div>';}
-function about(){menu('');$('#main').innerHTML='<h1>자료와 이용 안내</h1><section class="panel"><h2>이 학습에 관하여</h2><p>설계·자료: 김영제. 딕앤캐리 모형을 바탕으로 작성한 DD3의 목표·연습·자기평가 계획을 온라인 학습으로 구현했습니다.</p><p>학습 목표: 동대문노인종합복지관까지 현재 위치에서 일반 택시를 부르는 순서를 익히고, 필요할 때 따라하기 안내서를 사용합니다.</p><p>카카오T 화면은 제공된 「3차보고서 최종」 교재에서 발췌했습니다. 카드 세부 정보는 가렸습니다. 화면은 당시의 예시이며 실제 앱의 버튼·화면 순서·요금·인증 방식과 다를 수 있습니다.</p><p>목적지 주소는 <a href="https://www.happysenior.or.kr/bbs/board.php?bo_table=0108" target="_blank" rel="noopener">복지관 공식 오시는 길</a> 및 <a href="https://www.ddm.go.kr/www/contents.do?key=693" target="_blank" rel="noopener">동대문구 시설 안내</a>로 확인했습니다.</p></section><section class="panel" style="margin-top:20px"><h2>학습 기록</h2><p>이 사이트에는 로그인, 교사 대시보드, 서버로 보내는 학습 결과, 광고·방문 분석 기능이 없습니다. 진도·스마트폰 체크·최근 평가 결과·글씨 크기는 이 브라우저에 저장됩니다.</p><p>다른 기기나 브라우저와 자동으로 공유되지 않습니다. 브라우저 기록 삭제나 시크릿 모드 사용 시 저장한 학습 기록이 사라질 수 있습니다.</p><p>카드 번호·주민등록번호·실제 결제 비밀번호를 수집하지 않습니다. 이 모듈은 카카오T와 연결되어 있지 않아 실제 호출이나 결제가 발생하지 않습니다.</p><p>이용이 어려우면 글씨 크게 또는 화면 크게 보기를 이용하고, 배운 단계로 돌아가 반복해 주세요.</p><button id="aboutReset">이 기기의 학습 기록 지우기</button></section>';$('#aboutReset').onclick=()=>$('#resetDialog').showModal();}
+function about(){menu('');$('#main').innerHTML='<h1>자료와 이용 안내</h1><section class="panel"><h2>이 학습에 관하여</h2><p>설계·자료: 김영제. 딕앤캐리 모형을 바탕으로 작성한 DD3의 목표·연습·자기평가 계획을 온라인 학습으로 구현했습니다.</p><p>학습 목표: 동대문노인종합복지관까지 현재 위치에서 일반 택시를 부르는 순서를 익히고, 필요할 때 따라하기 안내서를 사용합니다.</p><p>카카오T 화면은 제공된 「3차보고서 최종」 교재에서 발췌했습니다. 카드 세부 정보는 가렸습니다. 화면은 당시의 예시이며 실제 앱의 버튼·화면 순서·요금·인증 방식과 다를 수 있습니다.</p><p>목적지 주소는 <a href="https://www.happysenior.or.kr/bbs/board.php?bo_table=0108" target="_blank" rel="noopener">복지관 공식 오시는 길</a> 및 <a href="https://www.ddm.go.kr/www/contents.do?key=693" target="_blank" rel="noopener">동대문구 시설 안내</a>로 확인했습니다.</p></section><section class="panel" style="margin-top:20px"><h2>학습 기록</h2><p>이 사이트에는 로그인, 교사 대시보드, 서버로 보내는 학습 결과, 광고·방문 분석 기능이 없습니다. 진도·스마트폰 연습·구간별 자기 점검·최근 평가 결과·글씨 크기는 이 브라우저에 저장됩니다.</p><p>다른 기기나 브라우저와 자동으로 공유되지 않습니다. 브라우저 기록 삭제나 시크릿 모드 사용 시 저장한 학습 기록이 사라질 수 있습니다.</p><p>카드 번호·주민등록번호·실제 결제 비밀번호를 수집하지 않습니다. 이 모듈은 카카오T와 연결되어 있지 않아 실제 호출이나 결제가 발생하지 않습니다.</p><p>이용이 어려우면 글씨 크게 또는 화면 크게 보기를 이용하고, 배운 단계로 돌아가 반복해 주세요.</p><button id="aboutReset">이 기기의 학습 기록 지우기</button></section>';$('#aboutReset').onclick=()=>$('#resetDialog').showModal();}
 function focusMain(){window.scrollTo({top:0,behavior:'instant'});$('#main').focus({preventScroll:true});}
 function route(){let id=decodeURIComponent(location.hash.slice(1)||'home');if(id==='home')home();else if(id==='quiz')quiz();else if(id==='results')results();else if(id==='guide')guide();else if(id==='about')about();else{let p=C.pages.find(p=>p.id===id);if(p)lesson(p);else home();}document.title=`${id==='home'?'카카오T 차근차근 배우기':(C.pages.find(p=>p.id===id)?.title||({quiz:'스스로 확인하기',results:'나의 학습 결과',guide:'따라하기 안내서',about:'자료와 이용 안내'}[id]||'학습'))} | 내 손안의 택시`;focusMain();}
-document.addEventListener('click',e=>{if(e.target.closest('.skip')){e.preventDefault();$('#main').focus();$('#main').scrollIntoView();return;}const b=e.target.closest('[data-enlarge]');if(b){$('#largeImage').src=`assets/${b.dataset.enlarge}.webp`;$('#largeImage').alt=b.dataset.alt;$('#imageDialog').showModal();}});
-$('#closeImage').onclick=()=>$('#imageDialog').close();$('#font').onclick=()=>{state.big=!state.big;save();};$('#reset').onclick=()=>$('#resetDialog').showModal();$('#cancelReset').onclick=()=>$('#resetDialog').close();$('#confirmReset').onclick=()=>{state={done:[],phone:{},ready:[],last:'welcome',big:state.big,result:null};quizAnswers=Array(8).fill(null);quizIndex=0;save();$('#resetDialog').close();if(location.hash==='#home')route();else location.hash='home';};window.addEventListener('hashchange',route);route();
+document.addEventListener('click', event => {
+  if (event.target.closest('.skip')) {
+    event.preventDefault();
+    $('#main').focus();
+    $('#main').scrollIntoView();
+    return;
+  }
+  const button = event.target.closest('[data-enlarge]');
+  if (!button) return;
+
+  const page = C.pages.find(page => page.id === button.dataset.enlarge);
+  $('#largeCapture').innerHTML = renderCapture(page);
+  const dialog = $('#imageDialog');
+  dialog.showModal();
+  dialog.scrollTop = 0;
+});
+$('#closeImage').onclick=()=>$('#imageDialog').close();$('#font').onclick=()=>{state.big=!state.big;save();};$('#reset').onclick=()=>$('#resetDialog').showModal();$('#cancelReset').onclick=()=>$('#resetDialog').close();$('#confirmReset').onclick=()=>{state={done:[],phone:{},ready:[],selfChecks:[],last:'welcome',big:state.big,result:null};quizAnswers=Array(8).fill(null);quizIndex=0;save();$('#resetDialog').close();if(location.hash==='#home')route();else location.hash='home';};window.addEventListener('hashchange',route);route();
 })();
