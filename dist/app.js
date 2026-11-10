@@ -72,7 +72,61 @@ function bindSelfCheck() {
 }
 function feedback(msg,ok=true){const el=$('#feedback');if(el){el.className=`feedback ${ok?'ok':'retry'}`;el.textContent=msg;}}
 function options(items,action='choice'){return `<div class="options">${items.map((t,i)=>`<button class="option" data-${action}="${i}">${esc(t)}</button>`).join('')}</div>`;}
-function home(){menu('home');$('#main').innerHTML=`<section class="hero"><div class="hero-grid"><div><span class="eyebrow">어르신을 위한 생활 속 스마트폰 배움</span><h1>복지관 가는 길,<br>이제 내가 불러요.</h1><p class="lead">카카오T로 택시 부르기<br>한 화면씩, 차근차근 함께 배워요.</p><div class="meta"><span class="pill">한국어 · 약 60분</span><span class="pill">컴퓨터 + 내 스마트폰</span><span class="pill">로그인 없이 무료 학습</span></div><div class="actions"><a class="button primary" href="#${state.done.length?state.last:'welcome'}">${state.done.length?'이어서 배우기':'배움 시작하기'} →</a><a class="button" href="#guide">안내서 먼저 보기</a></div></div><div class="hero-visual" aria-hidden="true"><div class="phone-art"><img src="assets/icon-t.png" alt=""><div class="road"></div><strong style="font-size:16px">복지관으로 출발!</strong></div><span class="taxi-art">택시</span></div></div></section><div class="cards"><article class="card"><span class="number">01 · 컴퓨터로 보기</span><h3>크게 보고, 천천히 읽어요</h3><p>짧은 설명과 실제 화면으로 한 단계씩 알아봅니다.</p></article><article class="card"><span class="number">02 · 스마트폰으로 해보기</span><h3>내 손으로 익혀요</h3><p>호출 준비까지 직접 따라 하고, 어려우면 다시 봅니다.</p></article><article class="card"><span class="number">03 · 스스로 확인하기</span><h3>내가 배운 것을 알아봐요</h3><p>문제를 풀고, 다시 배울 단계를 확인합니다.</p></article></div><section class="panel"><h2>오늘 배우는 8단계</h2><div class="mini-steps">${['카카오T 찾기','카카오T 열기','복지관 검색하기','출발지 맞추기','일반호출 고르기','등록 카드 적용하기','호출하기 알아보기','비밀번호 화면 알아보기'].map((x,i)=>`<div><strong>${i+1}.</strong> ${x}</div>`).join('')}</div></section><div class="notice warning"><strong>마지막 두 단계는 화면으로만 연습해요.</strong><br>학습 중에는 스마트폰에서 실제 호출이나 결제 비밀번호 입력을 하지 않습니다.</div>${!storageOK?'<div class="notice warning">이 브라우저에서는 기록 저장이 어려울 수 있습니다. 결과를 내려받아 보관해 주세요.</div>':''}<p class="muted">진도와 최근 결과는 이 브라우저에만 저장됩니다. 다른 기기로 옮겨지지 않으며 교사에게 전송되지 않습니다.</p>`;}
+function home() {
+  menu('home');
+  const scenes = [
+    '복지관 갈 시간이네. 오늘은 택시 타고 가야겠다.',
+    '한참 기다렸는데… 빈 택시가 안 오네.',
+    '카카오T로 택시를 부를 수 있다던데, 한 번도 안 써 봤네.',
+    '카카오T를 열면 어디부터 눌러야 하지?'
+  ];
+  const steps = [
+    '카카오T 찾기', '카카오T 열기', '복지관 검색하기', '출발지 맞추기',
+    '일반호출 고르기', '등록 카드 적용하기', '호출하기 알아보기', '비밀번호 화면 알아보기'
+  ];
+  const hasProgress = state.done.length > 0;
+  const startPage = hasProgress ? state.last : 'welcome';
+  const startLabel = hasProgress ? '이어서 배우기' : '배움 시작하기';
+
+  $('#main').innerHTML = `
+    <section class="hero home-hero" aria-labelledby="homeTitle">
+      <span class="eyebrow">어르신을 위한 생활 속 스마트폰 배움</span>
+      <h1 id="homeTitle">복지관 가는 길, 이제 내가 불러요.</h1>
+      <p class="lead">카카오T로 택시 부르기. 한 화면씩 차근차근 함께 배워요.</p>
+      <section class="opening-story" aria-labelledby="openingStoryTitle">
+        <h2 id="openingStoryTitle">집 앞에서 택시가 안 잡힌다면?</h2>
+        <ol class="story-panels" role="list">
+          ${scenes.map((scene, index) => `
+            <li class="story-panel">
+              <div class="story-picture story-picture-${index + 1}" aria-hidden="true">
+                <span class="story-number">${index + 1}</span>
+              </div>
+              <p class="story-dialogue"><q>${esc(scene)}</q></p>
+            </li>`).join('')}
+        </ol>
+      </section>
+      <div class="actions">
+        <a class="button primary" href="#${startPage}">${startLabel} →</a>
+        <a class="button" href="#guide">안내서 먼저 보기</a>
+      </div>
+      <div class="meta">
+        <span class="pill">한국어 · 약 60분</span>
+        <span class="pill">컴퓨터 + 내 스마트폰</span>
+        <span class="pill">로그인 없이 무료 학습</span>
+      </div>
+    </section>
+    <div class="cards">
+      <article class="card"><span class="number">01 · 컴퓨터로 보기</span><h3>크게 보고, 천천히 읽어요</h3><p>짧은 설명과 실제 화면으로 한 단계씩 알아봅니다.</p></article>
+      <article class="card"><span class="number">02 · 스마트폰으로 해보기</span><h3>내 손으로 익혀요</h3><p>호출 준비까지 직접 따라 하고, 어려우면 다시 봅니다.</p></article>
+      <article class="card"><span class="number">03 · 스스로 확인하기</span><h3>내가 배운 것을 알아봐요</h3><p>문제를 풀고, 다시 배울 단계를 확인합니다.</p></article>
+    </div>
+    <section class="panel">
+      <h2>오늘 배우는 8단계</h2>
+      <div class="mini-steps">${steps.map((step, index) => `<div><strong>${index + 1}.</strong> ${step}</div>`).join('')}</div>
+    </section>
+    ${!storageOK ? '<div class="notice warning">이 브라우저에서는 기록 저장이 어려울 수 있습니다. 결과를 내려받아 보관해 주세요.</div>' : ''}`;
+}
+
 function lesson(page) {
   menu(page.group);
   state.last = page.id;
